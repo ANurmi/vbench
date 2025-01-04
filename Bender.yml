@@ -6,4 +6,4 @@ package:
 sources:
   - target: verilator
     files:
-    - src/ClkRstDrv.h
+    - include/ClkRstDrv.h
