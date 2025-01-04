@@ -1,0 +1,9 @@
+package:
+  name: verilator-vip
+  authors:
+    - "Antti Nurmi <antti.nurmi@tuni.fi>"
+
+sources:
+  # Level 0
+  - files:
+    - src/ClkRstDrv.h
