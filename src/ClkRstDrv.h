@@ -1,3 +1,6 @@
+class ClkRstDrv;
+
+
 class ClkRstDrv {
     private:
         SimCtx* cx;
