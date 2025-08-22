@@ -1,3 +1,20 @@
+/* This testbench base class expexts the macros
+
+CLKI
+RSTNI
+JTAGTCK
+JTAGTMS
+JTAGTDI
+JTAGTDO
+JTAGTRSTN
+
+to be defined at start of the top cpp testbench in
+accordance with the exact naming used on the DUT,
+i.e., "#define CLKI clk_i".
+
+*/
+
+
 #include <stdint.h>
 
 // Clock period in picoseconds, used for generating waveforms
@@ -16,7 +33,7 @@ public:
     Testbench(void) : m_trace(NULL), m_tickcount(01), m_jtag_ir(0xFF) {
         m_dut = new VA;
         Verilated::traceEverOn(true);
-        m_dut->clk_i = 0;
+        m_dut->CLKI = 0;
         eval(); // set initial values
     }
 
@@ -50,10 +67,10 @@ public:
         m_tickcount++;
         eval();
         if (m_trace) m_trace->dump((vluint64_t)(CLOCK_PERIOD_PS*m_tickcount-CLOCK_PERIOD_PS/5));
-        m_dut->clk_i = 1;
+        m_dut->CLKI = 1;
         eval();
         if (m_trace) m_trace->dump((vluint64_t)(CLOCK_PERIOD_PS*m_tickcount));
-        m_dut->clk_i = 0;
+        m_dut->CLKI = 0;
         eval();
         if (m_trace){
             m_trace->dump((vluint64_t)(CLOCK_PERIOD_PS*m_tickcount+CLOCK_PERIOD_PS/2));
@@ -62,9 +79,9 @@ public:
     }
 
     virtual void reset(void) {
-        m_dut->rst_ni = 0;
+        m_dut->RSTNI = 0;
         tick();
-        m_dut->rst_ni = 1;
+        m_dut->RSTNI = 1;
     }
 
     uint64_t tickcount(void) {
@@ -72,54 +89,54 @@ public:
 	}
 
     virtual void jtag_tick(void) {
+        const uint8_t HalfPer = JTAG_CLK_PER;
         // drive jtag_clk risign edge slightly before input
-        for (int i=0;i<JTAG_CLK_PER*2; i++){
-            m_dut->jtag_tck_i = (i < JTAG_CLK_PER - 1 | i == (JTAG_CLK_PER*2) -1);
+        for (int i=0;i<HalfPer*2; i++){
+            m_dut->JTAGTCK = (i < HalfPer - 1 | i == (HalfPer*2) -1);
             tick();
         }
     }
-    
+
     virtual void jtag_reset(void) {
-        m_dut->jtag_tms_i   = 1;
-        m_dut->jtag_td_i    = 0;
-        m_dut->jtag_trst_ni = 0;
+        m_dut->JTAGTMS   = 1;
+        m_dut->JTAGTDI   = 0;
+        m_dut->JTAGTRSTN = 0;
         jtag_tick();
         jtag_tick();
-        m_dut->jtag_trst_ni = 1;
+        m_dut->JTAGTRSTN = 1;
         m_jtag_ir = 0xFF;
         jtag_tick();
     }
-
     virtual void jtag_softreset(void) {
-        m_dut->jtag_tms_i   = 1;
-        m_dut->jtag_td_i    = 0;
+        m_dut->JTAGTMS   = 1;
+        m_dut->JTAGTDI    = 0;
         for(int i=0;i<6;i++) jtag_tick();
-        m_dut->jtag_tms_i   = 0;
+        m_dut->JTAGTMS   = 0;
         jtag_tick();
         // After softreset the IR should be reset to IDCODE so we have to mirror
         // this in our internal state.
         m_jtag_ir = 0xFF;
     }
-    
+
     virtual void jtag_reset_master (void) {
         jtag_reset();
         jtag_softreset();
     }
-    
+
     virtual void write_tms(bool val) {
-        m_dut->jtag_tms_i = val;
+        m_dut->JTAGTMS = val;
         jtag_tick();
     }
-    
+
     virtual void write_bits (uint64_t wdata, uint32_t size, bool tms_last) {
         for (int i = 0; i < size; i++){
-            m_dut->jtag_td_i = (wdata >> i) & 0x1;
-            if (i == size-1) m_dut->jtag_tms_i = tms_last;
+            m_dut->JTAGTDI = (wdata >> i) & 0x1;
+            if (i == size-1) m_dut->JTAGTMS = tms_last;
             jtag_tick();
         }
-        m_dut->jtag_tms_i = 0;
+        m_dut->JTAGTMS = 0;
     }
-    
+
     virtual void set_ir(uint32_t opcode) {
         const uint32_t mask_5b = 0b11111;
         // check whether IR is already set to the right value
@@ -135,7 +152,7 @@ public:
         write_tms(0); // run test idle
         m_jtag_ir = opcode;
     }
-    
+
     virtual void shift_dr(void) {
         write_tms(1); // select DR scan
         write_tms(0); // capture DR
@@ -147,15 +164,15 @@ public:
         // make everything u64 so shifting works
         const uint64_t one = 1;
         for (uint64_t i = 0; i < size; i++) {
-            m_dut->jtag_td_i = (wdata >> i) & one;
+            m_dut->JTAGTDI = (wdata >> i) & one;
             if (i == size-1) 
-                m_dut->jtag_tms_i = tms_last;
+                m_dut->JTAGTMS = tms_last;
             jtag_tick();
-            res |= (((uint64_t)m_dut->jtag_td_o) << i) & (one << i);
+            res |= (((uint64_t)m_dut->JTAGTDO) << i) & (one << i);
         }
         return res;
     }
-    
+
     virtual void update_dr(bool exit_1_dr) {
         // depending on the state `exit_1_dr` is already reached when shifting data (`tms_on_last`).
         if (exit_1_dr) write_tms(1);
