@@ -365,7 +365,7 @@ public:
         wait_idle(wait_cycles);
     }
 
-    
+    /*
     virtual void jtag_memory_test (void) {
         const uint32_t SpmSize  = 0x8000;
         const uint32_t SpmStart = 0x1000;
@@ -477,7 +477,46 @@ public:
         return entry;
     }
 */
-    virtual void jtag_halt_run (uint32_t entry) {
+
+    virtual void jtag_halt_hart(void) {
+        const uint32_t DmCmd = 0x80000001; // haltreq = 1, dmactive = 1
+        const uint8_t  DmControlAddr = 0x10;
+        const uint8_t  DmStatusAddr  = 0x11;
+        // halt hart 0
+        jtag_write(DmControlAddr, DmCmd);
+        uint32_t status = 0;
+        do status = jtag_read_dmi_exp_backoff(DmControlAddr);
+        while (status & 0x200);
+        printf("[JTAG] Halted hart 0\n");
+    }
+
+    virtual void jtag_resume_hart_from(uint32_t entry) {
+        // repoint execution
+        const uint8_t  Data0     = 0x04;
+        const uint8_t  Command   = 0x17;
+        const uint16_t CsrDpc    = 0x7b1; // 12
+        const uint32_t DmiCmd    = 0x2307B1;
+        jtag_write(Data0, entry);
+        jtag_write(Command, DmiCmd);
+        // resume hart
+        const uint8_t  DmControlAddr = 0x10;
+        const uint32_t DmCmd         = 0x40000001;
+        jtag_write(DmControlAddr, DmCmd);
+        printf("[JTAG] Resumed hart 0 from 0x%x\n", entry);
+    }
+
+    virtual uint32_t jtag_load_elf(void) {
+        return 0;
+    }
+
+    virtual void jtag_run_elf(const std::string path) {
+        printf("[JTAG] TODO: new ELF loader\n");
+        jtag_halt_hart();
+        uint32_t entry = jtag_load_elf();
+        jtag_resume_hart_from(entry);
+    };
+
+    /*virtual void jtag_halt_run (uint32_t entry) {
         printf("[JTAG] Attempting to halt hart 0\n");
         //uint32_t entry = jtag_elf_halt_load(binary, jtag_load);
         // repoint execution
@@ -493,7 +532,7 @@ public:
         jtag_write(DmControlAddr, DmCmd);
         printf("[JTAG] Resumed hart 0 from 0x%x\n", entry);
 
-    }
+    }*/
 
     virtual void jtag_wait_eoc (void) {
         printf("[JTAG] Waiting for end of computation\n");
