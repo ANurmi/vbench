@@ -2,21 +2,59 @@
 
 CLKI
 RSTNI
+
 JTAGTCK
 JTAGTMS
 JTAGTDI
 JTAGTDO
 JTAGTRSTN
 
+IDCODE
+
 to be defined at start of the top cpp testbench in
 accordance with the exact naming used on the DUT,
 i.e., "#define CLKI clk_i".
-
 */
 
-
 #include <stdint.h>
+#include <fstream>
 
+typedef struct {
+    // assume 32-bit addressing for now
+    uint32_t entry;
+    uint32_t phoff;
+    uint32_t shoff;
+    uint16_t ehsize;
+    uint16_t phnum;
+    uint16_t phentsize;
+    uint16_t shnum;
+    uint16_t shentsize;
+    uint16_t shstrndx;
+} elf_hdr_t;
+
+typedef struct {
+    // assume 32-bit addressing for now
+    uint32_t type;
+    uint32_t offset;
+    uint32_t vaddr;
+    uint32_t paddr;
+    uint32_t filesz;
+    uint32_t memsz;
+    uint32_t flags;
+    uint32_t align;
+} prog_hdr_t;
+
+/*
+typedef struct {
+    // assume 32-bit addressing for now
+    uint32_t name;
+    uint32_t addr;
+    uint32_t offset;
+    uint32_t size;
+    uint32_t addralign;
+    uint32_t entsize;
+} sec_hdr_t;
+*/
 // Clock period in picoseconds, used for generating waveforms
 const uint32_t CLOCK_PERIOD_PS = /* 100 MHz */ 10'000;
 
@@ -305,7 +343,7 @@ public:
     virtual void jtag_init (void) {
         printf("[JTAG] Perform init \t-\t time %ld\n", m_tickcount);
         const uint32_t IdCodeInstr = 0b11111;
-        const uint32_t IdCode      = 0xfeedc0d3;
+        const uint32_t IdCode      = IDCODE;
         const uint8_t  SbcsAddr    = 0x38;
         const uint32_t SbcsData    = 0x58000;
 
@@ -365,119 +403,6 @@ public:
         wait_idle(wait_cycles);
     }
 
-    /*
-    virtual void jtag_memory_test (void) {
-        const uint32_t SpmSize  = 0x8000;
-        const uint32_t SpmStart = 0x1000;
-        const uint32_t NumAccs  = 20;
-        uint32_t  error_counter = 0;
-        printf("[JTAG] Performing memory-mapped access test\n");
-        for (uint32_t i=0; i<NumAccs; i++) {
-            uint32_t random_data = rand();            // word alling
-            uint32_t random_addr = ((rand() % SpmSize) & 0xFFFFFFFC ) + SpmStart;
-            jtag_mm_write(random_addr, random_data);
-            uint32_t result_data = jtag_mm_read(random_addr);
-            if (result_data != random_data) {
-                printf("[JTAG] Write-read ERROR! Wrote %08x, read %08x\n",
-                                            random_data, result_data);
-                error_counter++;
-            }
-        }
-        if (!error_counter)
-            printf("[JTAG] Completed %d write-reads successfully\n", NumAccs);
-        else
-            printf("[JTAG] Write-read test failed with %d unsuccessful accesses\n",
-                                            error_counter);
-    }
-/*
-    // simplified version with no svdpi
-    virtual uint8_t read_section(long long address, uint8_t* buf, long long len) {
-        
-        // check that the address points to a section
-        if (!mems.count(address)) {
-            printf("[ELF] ERROR: No section found for address %p\n", address);
-            return -1;
-        }
-        // copy array
-        long long int len_tmp = len;
-        for (auto &datum : mems.find(address)->second) {
-            if(len_tmp-- == 0){
-            printf("[ELF] ERROR: Copied 0x%lx bytes. Buffer is full but there is still data available.\n", len);
-            return -1;
-            }
-
-            *buf++ = datum;
-        }
-        return 0;
-    }
-
-    virtual uint32_t jtag_elf_preload(const std::string binary) {
-        const uint8_t  SBCS         = 0x38;
-        const uint8_t  SbAddr0      = 0x39;
-        const uint8_t  SbData0      = 0x3C;
-        const uint32_t JtagInitSbcs = 0x58000;
-
-        long long sec_addr;
-        long long sec_len;
-
-        printf("[JTAG] Preloading ELF binary %s\n", binary.c_str());
-        if(read_elf(binary.c_str())) {
-            printf("[JTAG] Failed to load ELF!\n");
-            throw std::runtime_error( "File not found" );
-        }
-        while (get_section(&sec_addr, &sec_len)){
-            uint8_t* bf = new uint8_t[sec_len];
-            printf("[JTAG] Preloading section at 0x%x (%0d bytes)\n", sec_addr, sec_len);
-            if (read_section(sec_addr, bf, sec_len)){
-                printf("[JTAG] Failed to read ELF section!\n");
-                throw std::runtime_error( "ELF error" );
-            }
-            jtag_write( SBCS, JtagInitSbcs, 1, 1 );
-            jtag_write( SbAddr0, (uint32_t)sec_addr );
-
-            for (uint64_t i=0; i<= sec_len; i += 4 ){
-                bool checkpoint = (i != 0 && i % 512 == 0);
-                if (checkpoint) printf("[JTAG] - %0d/%0d bytes (%0d%%)\n",
-                i, sec_len, i*100/(sec_len>1 ? sec_len-1 : 1));
-                uint32_t data = ((uint32_t)bf[i+3]) << 24
-                                |((uint32_t)bf[i+2]) << 16
-                                |((uint32_t)bf[i+1]) << 8
-                                |((uint32_t)bf[i  ]);
-                jtag_write(SbData0, data, checkpoint, checkpoint);
-            }
-            delete bf;
-        }
-
-        long long entry = 0;
-        (void)(get_entry(&entry));
-        printf("[JTAG] Preload complete\n");
-        return (uint32_t)entry;
-    }
-
-    virtual uint32_t jtag_elf_halt_load (const std::string binary, bool jtag_load) {
-        const uint32_t DmCmd = 0x80000001; // haltreq = 1, dmactive = 1
-        const uint8_t  DmControlAddr = 0x10;
-        const uint8_t  DmStatusAddr  = 0x11;
-        // halt hart 0
-        jtag_write(DmControlAddr, DmCmd);
-        uint32_t status = 0;
-        do status = jtag_read_dmi_exp_backoff(DmControlAddr);
-        while (status & 0x200);
-        printf("[JTAG] Halted hart 0\n");
-        uint32_t entry = 0x1000; // default IMEM base
-        if(jtag_load)
-            entry = jtag_elf_preload(binary);
-        else {
-            read_elf(binary.c_str());
-            long long entry_ = 0;
-            (void)(get_entry(&entry_));
-            entry = (uint32_t)entry_;
-        }
-
-        return entry;
-    }
-*/
-
     virtual void jtag_halt_hart(void) {
         const uint32_t DmCmd = 0x80000001; // haltreq = 1, dmactive = 1
         const uint8_t  DmControlAddr = 0x10;
@@ -502,37 +427,79 @@ public:
         const uint8_t  DmControlAddr = 0x10;
         const uint32_t DmCmd         = 0x40000001;
         jtag_write(DmControlAddr, DmCmd);
-        printf("[JTAG] Resumed hart 0 from 0x%x\n", entry);
+        printf("[JTAG] Resumed hart 0 from 0x%08x\n", entry);
     }
 
-    virtual uint32_t jtag_load_elf(void) {
-        return 0;
+    /**
+     * @brief Loads given ELF file to memory via JTAG
+     * 
+     * @param pat ELF file path
+     * @return uint32_t Program startpoint extraxted from ELF 
+     */
+    virtual uint32_t jtag_load_elf(const std::string path) {
+
+        std::fstream fs;
+        std::string line;
+        std::string concat = "";
+        // Entrypoint
+        uint32_t entry = 0;
+
+        // address and size
+        std::vector<std::pair<uint64_t, uint64_t>> sections;
+
+        // memory based address and content
+        std::map<uint64_t, std::vector<uint8_t>> mems;
+
+        //int section_index = 0;
+        uint32_t e_phoff  = 0;
+        uint32_t e_shoff  = 0;
+        uint32_t e_phnum  = 0;
+        uint32_t e_shnum  = 0;
+
+        fs.open(path, std::ios::in);
+
+        // Concatenate ELF contents to single string
+        while (getline (fs, line)) {
+            concat = concat + line;
+        }
+        fs.close();
+
+        elf_hdr_t e = parse_elf_hdr(concat);
+        entry = e.entry;
+
+        for (unsigned int i = 0; i < e.phnum; i++) {
+
+            const uint32_t prog_hdr_offs = e.phoff + e.phentsize*i;
+            prog_hdr_t p = parse_pgr_hdr(concat, prog_hdr_offs);
+            bool type_load = (p.type == 1);
+
+            if (p.memsz != 0 & type_load) {
+                if (p.filesz) {
+                    printf("[ELFLOAD] Writing LOAD section to 0x%08x\n", p.paddr);
+                    for (int j = 0; j<p.filesz; j = j+4) {
+                        const uint32_t addr = p.paddr + j;
+                        const uint32_t data = get_from_offset<uint32_t>(concat, p.offset+j);
+                        jtag_mm_write(addr, data, 30, 0);
+                        if ((j % 0x40) == 0 && j != 0) printf("[ELFLOAD] Written %d/%d bytes\n", j, p.filesz);
+                    }
+                }
+                if (p.memsz > p.filesz) {
+                    printf("[ELFLOAD] WARNING: Section starting at %08x contains %1d zero bytes which will not be loaded!\n",
+                        p.paddr, (p.memsz - p.filesz));
+                }
+            }
+
+        }
+
+        return entry;
     }
 
     virtual void jtag_run_elf(const std::string path) {
-        printf("[JTAG] TODO: new ELF loader\n");
         jtag_halt_hart();
-        uint32_t entry = jtag_load_elf();
+        uint32_t entry = jtag_load_elf(path);
         jtag_resume_hart_from(entry);
     };
 
-    /*virtual void jtag_halt_run (uint32_t entry) {
-        printf("[JTAG] Attempting to halt hart 0\n");
-        //uint32_t entry = jtag_elf_halt_load(binary, jtag_load);
-        // repoint execution
-        const uint8_t  Data0     = 0x04;
-        const uint8_t  Command   = 0x17;
-        const uint16_t CsrDpc    = 0x7b1; // 12
-        const uint32_t DmiCmd    = 0x2307B1;
-        jtag_write(Data0, entry);
-        jtag_write(Command, DmiCmd);
-        // resume hart
-        const uint8_t  DmControlAddr = 0x10;
-        const uint32_t DmCmd         = 0x40000001;
-        jtag_write(DmControlAddr, DmCmd);
-        printf("[JTAG] Resumed hart 0 from 0x%x\n", entry);
-
-    }*/
 
     virtual void jtag_wait_eoc (void) {
         printf("[JTAG] Waiting for end of computation\n");
@@ -550,6 +517,60 @@ public:
             printf("[TB] Exit code: %x\n", exit_code);
             printf("[TB] Program execution [FAILED]!\n");
         }
+    }
+
+private:
+
+    template<typename T>
+    uint32_t get_from_offset(std::string input_string, const uint32_t offs ) {
+        uint32_t size   = sizeof(T);
+        uint32_t result = 0;
+        for (int i=size-1; i>=0; i--){
+            result |= ((uint8_t)input_string[offs+i]) << 8*i;
+        }
+        return result;
+    }
+
+    elf_hdr_t parse_elf_hdr(std::string input_string) {
+
+        elf_hdr_t ehdr;
+
+        // Check magic value, implicit ok branch
+        if(!(input_string[0] == 0x7F && (input_string.substr(1,3) == "ELF"))) {
+            std::cout << "[ELFLOAD] ERROR: ELF Format not OK" << std::endl;
+        }
+
+        //std::string bitwidth  = (input_string[4] == 0x1) ? "32" : "64";
+        //std::string endianess = (input_string[5] == 0x1) ? "little" : "big";
+
+        // TODO: all offsets statically based on 32-bit addresses
+        ehdr.entry = get_from_offset<uint32_t>(input_string, 0x18);
+        ehdr.phoff = get_from_offset<uint32_t>(input_string, 0x1C);
+        ehdr.shoff = get_from_offset<uint32_t>(input_string, 0x20); 
+        ehdr.phnum = get_from_offset<uint16_t>(input_string, 0x2C);
+        ehdr.phentsize = get_from_offset<uint16_t>(input_string, 0x2A);
+        ehdr.shnum = get_from_offset<uint16_t>(input_string, 0x30);
+        ehdr.shentsize = get_from_offset<uint16_t>(input_string, 0x2E);
+        ehdr.shstrndx = get_from_offset<uint16_t>(input_string, 0x32);
+
+        return ehdr;
+    }
+
+    prog_hdr_t parse_pgr_hdr(std::string input_string, uint32_t offs) {
+
+        prog_hdr_t phdr;
+
+        phdr.type = get_from_offset<uint32_t>(input_string, offs);
+        phdr.offset = get_from_offset<uint32_t>(input_string, offs + 0x4);
+        phdr.vaddr = get_from_offset<uint32_t>(input_string, offs + 0x8);
+        phdr.paddr = get_from_offset<uint32_t>(input_string, offs + 0xC);
+        phdr.filesz = get_from_offset<uint32_t>(input_string, offs + 0x10);
+        phdr.memsz = get_from_offset<uint32_t>(input_string, offs + 0x14);
+        phdr.flags = get_from_offset<uint32_t>(input_string, offs + 0x18);
+        phdr.align = get_from_offset<uint32_t>(input_string, offs + 0x1C);
+
+        return phdr;
+
     }
 
 };
