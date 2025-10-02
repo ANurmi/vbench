@@ -68,6 +68,9 @@ public:
     uint64_t        m_tickcount;
     uint8_t         m_jtag_ir;
 
+    const uint8_t  DmStatusAddr  = 0x11;
+    const uint8_t  DmControlAddr = 0x10;
+
     Testbench(void) : m_trace(NULL), m_tickcount(01), m_jtag_ir(0xFF) {
         m_dut = new VA;
         Verilated::traceEverOn(true);
@@ -405,13 +408,13 @@ public:
 
     virtual void jtag_halt_hart(void) {
         const uint32_t DmCmd = 0x80000001; // haltreq = 1, dmactive = 1
-        const uint8_t  DmControlAddr = 0x10;
-        const uint8_t  DmStatusAddr  = 0x11;
         // halt hart 0
         jtag_write(DmControlAddr, DmCmd);
         uint32_t status = 0;
-        do status = jtag_read_dmi_exp_backoff(DmControlAddr);
-        while (status & 0x200);
+        do {
+          status = jtag_read_dmi_exp_backoff(DmStatusAddr);
+        }
+        while (!(status & 0x200)); // Bit 9: allhalted
         printf("[JTAG] Halted hart 0\n");
     }
 
@@ -424,9 +427,13 @@ public:
         jtag_write(Data0, entry);
         jtag_write(Command, DmiCmd);
         // resume hart
-        const uint8_t  DmControlAddr = 0x10;
         const uint32_t DmCmd         = 0x40000001;
         jtag_write(DmControlAddr, DmCmd);
+        uint32_t status = 0;
+        do {
+          status = jtag_read_dmi_exp_backoff(DmStatusAddr);
+        }
+        while (!(status & 0x400)); // Bit 10: allrunning
         printf("[JTAG] Resumed hart 0 from 0x%08x\n", entry);
     }
 
