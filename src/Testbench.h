@@ -428,13 +428,13 @@ public:
         jtag_write(Command, DmiCmd);
         // resume hart
         const uint32_t DmCmd         = 0x40000001;
+        printf("[JTAG] Resuming hart 0 from 0x%08x\n", entry);
         jtag_write(DmControlAddr, DmCmd);
-        uint32_t status = 0;
-        do {
-          status = jtag_read_dmi_exp_backoff(DmStatusAddr);
-        }
-        while (!(status & 0x400)); // Bit 10: allrunning
-        printf("[JTAG] Resumed hart 0 from 0x%08x\n", entry);
+        //uint32_t status = 0;
+        //do {
+        //  status = jtag_read_dmi_exp_backoff(DmStatusAddr);
+        //}
+        //while (!(status & 0x400)); // Bit 10: allrunning
     }
 
     virtual uint32_t get_entry(const std::string path) {
