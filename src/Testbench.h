@@ -437,6 +437,11 @@ public:
         printf("[JTAG] Resumed hart 0 from 0x%08x\n", entry);
     }
 
+    virtual uint32_t get_entry(const std::string path) {
+      elf_hdr_t e = parse_elf_hdr(get_elf(path));
+      return e.entry;
+    }
+
     /**
      * @brief Loads given ELF file to memory via JTAG
      * 
@@ -444,12 +449,6 @@ public:
      * @return uint32_t Program startpoint extraxted from ELF 
      */
     virtual uint32_t jtag_load_elf(const std::string path) {
-
-        std::fstream fs;
-        std::string line;
-        std::string concat = "";
-        // Entrypoint
-        uint32_t entry = 0;
 
         // address and size
         std::vector<std::pair<uint64_t, uint64_t>> sections;
@@ -462,17 +461,9 @@ public:
         uint32_t e_shoff  = 0;
         uint32_t e_phnum  = 0;
         uint32_t e_shnum  = 0;
-
-        fs.open(path, std::ios::in);
-
-        // Concatenate ELF contents to single string
-        while (getline (fs, line)) {
-            concat = concat + line;
-        }
-        fs.close();
-
+        
+        std::string concat = get_elf(path);
         elf_hdr_t e = parse_elf_hdr(concat);
-        entry = e.entry;
 
         for (unsigned int i = 0; i < e.phnum; i++) {
 
@@ -495,10 +486,9 @@ public:
                         p.paddr, (p.memsz - p.filesz));
                 }
             }
-
         }
 
-        return entry;
+        return e.entry;
     }
 
     virtual void jtag_run_elf(const std::string path) {
@@ -506,7 +496,6 @@ public:
         uint32_t entry = jtag_load_elf(path);
         jtag_resume_hart_from(entry);
     };
-
 
     virtual void jtag_wait_eoc (void) {
         printf("[JTAG] Waiting for end of computation\n");
@@ -536,6 +525,21 @@ private:
             result |= ((uint8_t)input_string[offs+i]) << 8*i;
         }
         return result;
+    }
+
+    const std::string get_elf(const std::string path){
+      std::fstream fs;
+      std::string line;
+      std::string concat = "";
+        
+      fs.open(path, std::ios::in);
+
+      // Concatenate ELF contents to single string
+      while (getline (fs, line)) {
+          concat = concat + line;
+      }
+      fs.close();
+      return concat;
     }
 
     elf_hdr_t parse_elf_hdr(std::string input_string) {
