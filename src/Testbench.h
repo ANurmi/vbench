@@ -56,7 +56,7 @@ typedef struct {
 } sec_hdr_t;
 */
 // Clock period in picoseconds, used for generating waveforms
-const uint32_t CLOCK_PERIOD_PS = /* 1 MHz */ 1'000'000;
+const uint32_t CLOCK_PERIOD_PS = /* 10 MHz */ 10'000'000;
 
 const uint32_t JTAG_CLK_PER = 1; /* Relative to system clock*/
 
