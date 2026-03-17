@@ -497,7 +497,7 @@ public:
         jtag_resume_hart_from(entry);
     };
 
-    virtual void jtag_wait_eoc (void) {
+    virtual uint32_t jtag_wait_eoc (void) {
         printf("[JTAG] Waiting for end of computation\n");
         const uint8_t Data0 = 0x04;
         uint32_t exit_code = 0;
@@ -513,6 +513,7 @@ public:
             printf("[TB] Exit code: %x\n", exit_code);
             printf("[TB] Program execution [FAILED]!\n");
         }
+        return exit_code;
     }
 
 private:
